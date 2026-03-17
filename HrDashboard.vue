@@ -1,0 +1,995 @@
+<template>
+  <div class="hr-dashboard">
+    <!-- ====== FILTER BAR ====== -->
+    <div class="filter-bar">
+      <div class="filter-group">
+        <label class="filter-label">L2部门</label>
+        <select v-model="filters.l2Department" class="filter-select">
+          <option value="">L2</option>
+          <option v-for="dept in l2Options" :key="dept" :value="dept">{{ dept }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">L3部门</label>
+        <select v-model="filters.l3Department" class="filter-select filter-select-l3">
+          <option value="">L3</option>
+          <option v-for="dept in l3Options" :key="dept" :value="dept">{{ dept }}</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">地区部天数</label>
+        <input v-model.number="filters.regionDays" type="number" class="filter-input filter-input-days" placeholder=">XXX天" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">出差比例</label>
+        <input v-model.number="filters.tripRatio" type="number" class="filter-input filter-input-ratio" placeholder="" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label">员工</label>
+        <input v-model="filters.employeeName" type="text" class="filter-input filter-input-employee" />
+      </div>
+      <div class="filter-group">
+        <label class="filter-label filter-label-required">时间段</label>
+        <input v-model="filters.startDate" type="date" class="filter-input filter-input-date" placeholder="Insert date" />
+        <span class="date-arrow">▶</span>
+        <input v-model="filters.endDate" type="date" class="filter-input filter-input-date" placeholder="Insert date" />
+      </div>
+    </div>
+
+    <!-- ====== ACTION BUTTONS ====== -->
+    <div class="action-buttons">
+      <button class="btn-search" @click="handleSearch">搜索</button>
+      <button class="btn-reset" @click="handleReset">重置</button>
+    </div>
+
+    <!-- ====== SUMMARY CARDS ====== -->
+    <div class="summary-cards">
+      <div class="card card-with-icon">
+        <div class="card-content">
+          <span class="card-label">员工总数</span>
+          <span class="card-value">{{ summaryData.totalEmployees.toLocaleString() }}</span>
+        </div>
+        <div class="card-icon">
+          <svg viewBox="0 0 48 48" fill="none">
+            <circle cx="22" cy="16" r="8" stroke="#E8621A" stroke-width="2.5" fill="none"/>
+            <path d="M8 40c0-7.732 6.268-14 14-14s14 6.268 14 14" stroke="#E8621A" stroke-width="2.5" fill="none"/>
+            <circle cx="34" cy="14" r="5" stroke="#E8621A" stroke-width="1.8" fill="none"/>
+            <path d="M39 30c0-4.418-3.134-8-7-8" stroke="#E8621A" stroke-width="1.8" fill="none"/>
+          </svg>
+        </div>
+      </div>
+      <div class="card card-with-icon">
+        <div class="card-content">
+          <span class="card-label">出差</span>
+          <span class="card-value">{{ summaryData.totalTrips.toLocaleString() }}</span>
+        </div>
+        <div class="card-icon">
+          <svg viewBox="0 0 48 48" fill="none">
+            <circle cx="24" cy="24" r="16" stroke="#4AADE8" stroke-width="2.2" fill="none"/>
+            <circle cx="24" cy="18" r="6" stroke="#4AADE8" stroke-width="2" fill="none"/>
+            <path d="M14 36c0-5.523 4.477-10 10-10s10 4.477 10 10" stroke="#4AADE8" stroke-width="2" fill="none"/>
+            <circle cx="36" cy="10" r="4" fill="#4AADE8" opacity="0.5"/>
+          </svg>
+        </div>
+      </div>
+      <div class="card card-centered">
+        <div class="card-content card-content-center">
+          <span class="card-label card-label-orange">平均出差天数</span>
+          <span class="card-value card-value-large">{{ summaryData.avgTripDays }}<span class="card-unit">天</span></span>
+        </div>
+      </div>
+      <div class="card card-centered">
+        <div class="card-content card-content-center">
+          <span class="card-label card-label-orange">平均出差比例</span>
+          <span class="card-value card-value-large">{{ summaryData.avgTripRatio }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ====== TAB BUTTONS ====== -->
+    <div class="tab-buttons">
+      <button class="tab-btn" :class="{ active: activeTab === 'department' }" @click="switchTab('department')">按部门</button>
+      <button class="tab-btn" :class="{ active: activeTab === 'employee' }" @click="switchTab('employee')">按员工</button>
+    </div>
+
+    <!-- ====== DEPARTMENT TABLE ====== -->
+    <div v-if="activeTab === 'department'" class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="th-n">N</th>
+            <th class="th-dept">L2</th>
+            <th class="th-dept">L3</th>
+            <th class="th-num">员工总数</th>
+            <th class="th-num">平均出差天数</th>
+            <th class="th-num th-ratio">出差比例</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, index) in paginatedDepartmentData" :key="'d-'+index" @click="openDepartmentPopup(row)" class="clickable-row">
+            <td class="td-n">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
+            <td class="td-dept td-link">{{ row.l2 }}</td>
+            <td class="td-dept td-link">{{ row.l3 }}</td>
+            <td class="td-num">{{ row.employeeCount }}</td>
+            <td class="td-num">{{ row.avgTripDays }}</td>
+            <td class="td-num td-ratio">{{ row.tripRatio }}%</td>
+          </tr>
+          <tr v-if="paginatedDepartmentData.length === 0">
+            <td colspan="6" class="td-empty">暂无数据</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ====== EMPLOYEE TABLE ====== -->
+    <div v-if="activeTab === 'employee'" class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th class="th-n">N</th>
+            <th class="th-name">姓名</th>
+            <th class="th-dept">L2</th>
+            <th class="th-dept">L3</th>
+            <th class="th-num">累计出差天数</th>
+            <th class="th-num th-ratio">出差比例</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="(row, index) in paginatedEmployeeData" :key="'e-'+index">
+            <td class="td-n">{{ (currentPage - 1) * pageSize + index + 1 }}</td>
+            <td class="td-name">{{ row.name }}</td>
+            <td class="td-dept">{{ row.l2 }}</td>
+            <td class="td-dept">{{ row.l3 }}</td>
+            <td class="td-num">{{ row.totalTripDays }}</td>
+            <td class="td-num td-ratio">{{ row.tripRatio }}%</td>
+          </tr>
+          <tr v-if="paginatedEmployeeData.length === 0">
+            <td colspan="6" class="td-empty">暂无数据</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination-bar">
+      <div class="page-info-container">
+        <span class="page-info">Showing {{ showingFrom }} to {{ showingTo }} of {{ totalFilteredCount.toLocaleString() }} Entries</span>
+        <select v-model.number="pageSize" @change="currentPage = 1" class="page-size-select">
+          <option value="10">10 / page</option>
+          <option value="20">20 / page</option>
+          <option value="50">50 / page</option>
+          <option value="100">100 / page</option>
+        </select>
+      </div>
+      <div class="page-controls">
+        <button class="page-btn" :disabled="currentPage === 1" @click="prevPage">
+          <span class="chevron">&lsaquo;</span> Previous
+        </button>
+        <button class="page-btn" :disabled="currentPage >= totalPages" @click="nextPage">
+          Next <span class="chevron">&rsaquo;</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ====== POPUP OVERLAY ====== -->
+    <div v-if="showPopup" class="popup-overlay" @click.self="closePopup">
+      <div class="popup-box">
+        <div class="popup-scroll">
+          <table class="data-table popup-table">
+            <thead>
+              <tr>
+                <th class="th-n"></th>
+                <th class="th-name">姓名</th>
+                <th class="th-position">职位</th>
+                <th class="th-dept">L2</th>
+                <th class="th-dept">L3</th>
+                <th class="th-num">地区部天数</th>
+                <th class="th-num">累计出差天数</th>
+                <th class="th-num th-ratio">出差比率</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, index) in paginatedPopupData" :key="'p-'+index">
+                <td class="td-n">{{ (popupPage - 1) * pageSize + index + 1 }}</td>
+                <td class="td-name">{{ row.name }}</td>
+                <td class="td-position">{{ row.position }}</td>
+                <td class="td-dept">{{ row.l2 }}</td>
+                <td class="td-dept">{{ row.l3 }}</td>
+                <td class="td-num">{{ row.regionDays }}</td>
+                <td class="td-num">{{ row.totalTripDays }}</td>
+                <td class="td-num">{{ row.tripRate }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-bar popup-pagination">
+          <div class="page-info-container">
+            <span class="page-info">Showing {{ popupShowingFrom }} to {{ popupShowingTo }} of {{ popupTotalEntries.toLocaleString() }} Entries</span>
+            <select v-model.number="pageSize" @change="popupPage = 1" class="page-size-select">
+              <option value="10">10 / page</option>
+              <option value="20">20 / page</option>
+              <option value="50">50 / page</option>
+              <option value="100">100 / page</option>
+            </select>
+          </div>
+          <div class="page-controls">
+            <button class="page-btn" :disabled="popupPage === 1" @click="popupPrevPage">
+              <span class="chevron">&lsaquo;</span> Previous
+            </button>
+            <button class="page-btn" :disabled="popupPage >= popupTotalPages" @click="popupNextPage">
+              Next <span class="chevron">&rsaquo;</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      // ==================== TAB STATE ====================
+      activeTab: 'department',
+
+      // ==================== FILTER STATE ====================
+      filters: {
+        l2Department: '',
+        l3Department: '',
+        regionDays: null,
+        tripRatio: null,
+        employeeName: '',
+        startDate: '',
+        endDate: ''
+      },
+      appliedFilters: null,
+
+      // ==================== PAGINATION STATE ====================
+      currentPage: 1,
+      pageSize: 10,
+
+      // ==================== POPUP STATE ====================
+      showPopup: false,
+      popupPage: 1,
+      selectedDepartment: null,
+
+      // ==================== SUMMARY DATA ====================
+      summaryData: {
+        totalEmployees: 25440,
+        totalTrips: 25440,
+        avgTripDays: 25,
+        avgTripRatio: 20.6
+      },
+
+      // ==================== DUMMY DEPARTMENT DATA ====================
+      departmentData: [
+        { l2: 'Sales', l3: 'Sales', employeeCount: 18, avgTripDays: 4, tripRatio: 28 },
+        { l2: 'Marketing', l3: 'Marketing', employeeCount: 14, avgTripDays: 6, tripRatio: 22 },
+        { l2: 'Human Resources', l3: 'Human Resources', employeeCount: 17, avgTripDays: 7, tripRatio: 17 },
+        { l2: 'Finance', l3: 'Finance', employeeCount: 12, avgTripDays: 0, tripRatio: 20 },
+        { l2: 'Sales', l3: 'Sales', employeeCount: 11, avgTripDays: 5, tripRatio: 24 },
+        { l2: 'Human Resources', l3: 'Human Resources', employeeCount: 17, avgTripDays: 3, tripRatio: 23 },
+        { l2: 'Marketing', l3: 'Marketing', employeeCount: 16, avgTripDays: 7, tripRatio: 17 },
+        { l2: 'Finance', l3: 'Finance', employeeCount: 20, avgTripDays: 5, tripRatio: 23 },
+        { l2: 'Finance', l3: 'Finance', employeeCount: 11, avgTripDays: 9, tripRatio: 24 },
+        { l2: 'Marketing', l3: 'Marketing', employeeCount: 16, avgTripDays: 6, tripRatio: 22 },
+        { l2: 'Sales', l3: 'Marketing', employeeCount: 22, avgTripDays: 8, tripRatio: 19 },
+        { l2: 'Human Resources', l3: 'Finance', employeeCount: 15, avgTripDays: 4, tripRatio: 21 },
+        { l2: 'Finance', l3: 'Sales', employeeCount: 19, avgTripDays: 3, tripRatio: 25 },
+        { l2: 'Marketing', l3: 'Human Resources', employeeCount: 13, avgTripDays: 6, tripRatio: 18 },
+        { l2: 'Sales', l3: 'Finance', employeeCount: 21, avgTripDays: 2, tripRatio: 26 },
+        { l2: 'Human Resources', l3: 'Marketing', employeeCount: 10, avgTripDays: 7, tripRatio: 15 },
+        { l2: 'Finance', l3: 'Human Resources', employeeCount: 14, avgTripDays: 5, tripRatio: 22 },
+        { l2: 'Sales', l3: 'Human Resources', employeeCount: 16, avgTripDays: 9, tripRatio: 20 },
+        { l2: 'Marketing', l3: 'Sales', employeeCount: 18, avgTripDays: 4, tripRatio: 23 },
+        { l2: 'Human Resources', l3: 'Sales', employeeCount: 12, avgTripDays: 8, tripRatio: 16 },
+        { l2: 'Finance', l3: 'Marketing', employeeCount: 17, avgTripDays: 6, tripRatio: 21 },
+        { l2: 'Sales', l3: 'Sales', employeeCount: 24, avgTripDays: 3, tripRatio: 27 },
+        { l2: 'Marketing', l3: 'Finance', employeeCount: 11, avgTripDays: 5, tripRatio: 19 },
+        { l2: 'Human Resources', l3: 'Human Resources', employeeCount: 20, avgTripDays: 4, tripRatio: 18 },
+        { l2: 'Finance', l3: 'Sales', employeeCount: 15, avgTripDays: 7, tripRatio: 24 }
+      ],
+
+      // ==================== DUMMY EMPLOYEE DATA ====================
+      employeeData: [
+        { name: 'ALice ahmed 0047510', l2: 'Sales', l3: 'Sales', totalTripDays: 7, tripRatio: 4 },
+        { name: 'Bob chen 0051234', l2: 'Human Resources', l3: 'Marketing', totalTripDays: 4, tripRatio: 6 },
+        { name: 'Charlie wang 0062891', l2: 'Finance', l3: 'Human Resources', totalTripDays: 5, tripRatio: 7 },
+        { name: 'Diana li 0073456', l2: 'Sales', l3: 'Finance', totalTripDays: 6, tripRatio: 0 },
+        { name: 'Edward zhang 0084123', l2: 'Marketing', l3: 'Sales', totalTripDays: 4, tripRatio: 5 },
+        { name: 'Fiona wu 0095678', l2: 'Marketing', l3: 'Human Resources', totalTripDays: 7, tripRatio: 3 },
+        { name: 'George liu 0106234', l2: 'Finance', l3: 'Marketing', totalTripDays: 10, tripRatio: 7 },
+        { name: 'Hannah xu 0117890', l2: 'Human Resources', l3: 'Finance', totalTripDays: 5, tripRatio: 5 },
+        { name: 'Ivan huang 0128456', l2: 'Marketing', l3: 'Finance', totalTripDays: 6, tripRatio: 9 },
+        { name: 'Julia yang 0139012', l2: 'Finance', l3: 'Marketing', totalTripDays: 7, tripRatio: 6 },
+        { name: 'Kevin zhao 0149567', l2: 'Sales', l3: 'Sales', totalTripDays: 8, tripRatio: 5 },
+        { name: 'Laura sun 0150123', l2: 'Human Resources', l3: 'Human Resources', totalTripDays: 3, tripRatio: 8 },
+        { name: 'Mike chen 0160678', l2: 'Finance', l3: 'Finance', totalTripDays: 9, tripRatio: 4 },
+        { name: 'Nancy lin 0171234', l2: 'Marketing', l3: 'Sales', totalTripDays: 5, tripRatio: 7 },
+        { name: 'Oscar tang 0181890', l2: 'Sales', l3: 'Marketing', totalTripDays: 6, tripRatio: 3 },
+        { name: 'Patricia he 0192345', l2: 'Human Resources', l3: 'Finance', totalTripDays: 11, tripRatio: 6 },
+        { name: 'Quinn ma 0202901', l2: 'Finance', l3: 'Human Resources', totalTripDays: 4, tripRatio: 9 },
+        { name: 'Rachel zhu 0213456', l2: 'Marketing', l3: 'Marketing', totalTripDays: 7, tripRatio: 5 },
+        { name: 'Steven gao 0224012', l2: 'Sales', l3: 'Finance', totalTripDays: 8, tripRatio: 8 },
+        { name: 'Tina jiang 0234567', l2: 'Human Resources', l3: 'Sales', totalTripDays: 3, tripRatio: 4 }
+      ],
+
+      // ==================== DUMMY POPUP DATA ====================
+      popupData: [
+        { name: 'ALice ahmed 0047510', position: 'HR Director', l2: 'Sales', l3: 'Sales', regionDays: 7, totalTripDays: 4, tripRate: 4 },
+        { name: 'ALice ahmed 0047510', position: 'Promoter', l2: 'Human Resources', l3: 'Marketing', regionDays: 4, totalTripDays: 6, tripRate: 6 },
+        { name: 'ALice ahmed 0047510', position: 'Sales', l2: 'Finance', l3: 'Human Resources', regionDays: 5, totalTripDays: 7, tripRate: 7 },
+        { name: 'ALice ahmed 0047510', position: 'IT', l2: 'Sales', l3: 'Finance', regionDays: 6, totalTripDays: 0, tripRate: 0 },
+        { name: 'ALice ahmed 0047510', position: 'Admin', l2: 'Marketing', l3: 'Sales', regionDays: 4, totalTripDays: 5, tripRate: 5 },
+        { name: 'ALice ahmed 0047510', position: 'Cloud comput...', l2: 'Marketing', l3: 'Human Resources', regionDays: 7, totalTripDays: 3, tripRate: 3 },
+        { name: 'ALice ahmed 0047510', position: 'Customer sup...', l2: 'Finance', l3: 'Marketing', regionDays: 10, totalTripDays: 7, tripRate: 7 },
+        { name: 'ALice ahmed 0047510', position: 'HR Assistant', l2: 'Human Resources', l3: 'Finance', regionDays: 5, totalTripDays: 5, tripRate: 5 },
+        { name: 'ALice ahmed 0047510', position: 'IT support', l2: 'Marketing', l3: 'Finance', regionDays: 6, totalTripDays: 9, tripRate: 9 },
+        { name: 'ALice ahmed 0047510', position: 'Front End De...', l2: 'Finance', l3: 'Marketing', regionDays: 7, totalTripDays: 6, tripRate: 6 },
+        { name: 'ALice ahmed 0047510', position: 'Backend Dev', l2: 'Sales', l3: 'Sales', regionDays: 9, totalTripDays: 4, tripRate: 4 },
+        { name: 'ALice ahmed 0047510', position: 'Designer', l2: 'Marketing', l3: 'Marketing', regionDays: 3, totalTripDays: 8, tripRate: 8 }
+      ]
+    }
+  },
+
+  computed: {
+    // ==================== DROPDOWN OPTIONS ====================
+    l2Options: function() {
+      var depts = this.departmentData.map(function(d) { return d.l2; });
+      return depts.filter(function(v, i, a) { return a.indexOf(v) === i; });
+    },
+    l3Options: function() {
+      var depts = this.departmentData.map(function(d) { return d.l3; });
+      return depts.filter(function(v, i, a) { return a.indexOf(v) === i; });
+    },
+
+    // ==================== FILTERED DATA ====================
+    filteredDepartmentData: function() {
+      var data = this.departmentData.slice();
+      var f = this.appliedFilters;
+      if (!f) return data;
+      if (f.l2Department) data = data.filter(function(d) { return d.l2 === f.l2Department; });
+      if (f.l3Department) data = data.filter(function(d) { return d.l3 === f.l3Department; });
+      if (f.regionDays !== null && f.regionDays !== '') {
+        var days = f.regionDays;
+        data = data.filter(function(d) { return d.avgTripDays > days; });
+      }
+      if (f.tripRatio !== null && f.tripRatio !== '') {
+        var ratio = f.tripRatio;
+        data = data.filter(function(d) { return d.tripRatio >= ratio; });
+      }
+      return data;
+    },
+    filteredEmployeeData: function() {
+      var data = this.employeeData.slice();
+      var f = this.appliedFilters;
+      if (!f) return data;
+      if (f.l2Department) data = data.filter(function(d) { return d.l2 === f.l2Department; });
+      if (f.l3Department) data = data.filter(function(d) { return d.l3 === f.l3Department; });
+      if (f.employeeName) {
+        var name = f.employeeName.toLowerCase();
+        data = data.filter(function(d) { return d.name.toLowerCase().indexOf(name) !== -1; });
+      }
+      if (f.tripRatio !== null && f.tripRatio !== '') {
+        var ratio = f.tripRatio;
+        data = data.filter(function(d) { return d.tripRatio >= ratio; });
+      }
+      return data;
+    },
+
+    // ==================== PAGINATION COMPUTED ====================
+    totalFilteredCount: function() {
+      return this.activeTab === 'department' ? this.filteredDepartmentData.length : this.filteredEmployeeData.length;
+    },
+    totalPages: function() {
+      return Math.max(1, Math.ceil(this.totalFilteredCount / this.pageSize));
+    },
+    showingFrom: function() {
+      if (this.totalFilteredCount === 0) return 0;
+      return (this.currentPage - 1) * this.pageSize + 1;
+    },
+    showingTo: function() {
+      return Math.min(this.currentPage * this.pageSize, this.totalFilteredCount);
+    },
+    paginatedDepartmentData: function() {
+      var start = (this.currentPage - 1) * this.pageSize;
+      return this.filteredDepartmentData.slice(start, start + this.pageSize);
+    },
+    paginatedEmployeeData: function() {
+      var start = (this.currentPage - 1) * this.pageSize;
+      return this.filteredEmployeeData.slice(start, start + this.pageSize);
+    },
+
+    // ==================== POPUP PAGINATION COMPUTED ====================
+    popupTotalEntries: function() { return this.popupData.length; },
+    popupTotalPages: function() { return Math.max(1, Math.ceil(this.popupTotalEntries / this.pageSize)); },
+    popupShowingFrom: function() {
+      if (this.popupTotalEntries === 0) return 0;
+      return (this.popupPage - 1) * this.pageSize + 1;
+    },
+    popupShowingTo: function() {
+      return Math.min(this.popupPage * this.pageSize, this.popupTotalEntries);
+    },
+    paginatedPopupData: function() {
+      var start = (this.popupPage - 1) * this.pageSize;
+      return this.popupData.slice(start, start + this.pageSize);
+    }
+  },
+
+  methods: {
+    // ==================== TAB SWITCHING ====================
+    switchTab: function(tab) {
+      this.activeTab = tab;
+      this.currentPage = 1;
+    },
+
+    // ==================== SEARCH & RESET ====================
+    handleSearch: function() {
+      this.appliedFilters = JSON.parse(JSON.stringify(this.filters));
+      this.currentPage = 1;
+      // --- API INTEGRATION (uncomment when backend is ready) ---
+      // this.fetchDepartments();
+      // this.fetchEmployees();
+    },
+    handleReset: function() {
+      this.filters = {
+        l2Department: '', l3Department: '', regionDays: null,
+        tripRatio: null, employeeName: '', startDate: '', endDate: ''
+      };
+      this.appliedFilters = null;
+      this.currentPage = 1;
+      // --- API INTEGRATION (uncomment when backend is ready) ---
+      // this.fetchDepartments();
+      // this.fetchEmployees();
+    },
+
+    // ==================== PAGINATION ====================
+    prevPage: function() { if (this.currentPage > 1) this.currentPage--; },
+    nextPage: function() { if (this.currentPage < this.totalPages) this.currentPage++; },
+
+    // ==================== POPUP ====================
+    openDepartmentPopup: function(department) {
+      this.selectedDepartment = department;
+      this.popupPage = 1;
+      this.showPopup = true;
+      document.body.style.overflow = 'hidden';
+      // --- API INTEGRATION (uncomment when backend is ready) ---
+      // this.fetchDepartmentDetail(department.l2, department.l3);
+    },
+    closePopup: function() {
+      this.showPopup = false;
+      this.selectedDepartment = null;
+      document.body.style.overflow = '';
+    },
+    popupPrevPage: function() { if (this.popupPage > 1) this.popupPage--; },
+    popupNextPage: function() { if (this.popupPage < this.popupTotalPages) this.popupPage++; },
+
+    // ==================== API INTEGRATION FUNCTIONS ====================
+    // Uncomment and configure these when the backend API is ready
+
+    /*
+    fetchDepartments: function() {
+      var self = this;
+      var params = new URLSearchParams();
+      if (self.filters.l2Department) params.append('l2', self.filters.l2Department);
+      if (self.filters.l3Department) params.append('l3', self.filters.l3Department);
+      if (self.filters.regionDays) params.append('regionDays', self.filters.regionDays);
+      if (self.filters.tripRatio) params.append('tripRatio', self.filters.tripRatio);
+      if (self.filters.startDate) params.append('startDate', self.filters.startDate);
+      if (self.filters.endDate) params.append('endDate', self.filters.endDate);
+      params.append('page', self.currentPage);
+      params.append('pageSize', self.pageSize);
+
+      fetch('/api/departments?' + params.toString(), {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        self.departmentData = data.items || [];
+        self.summaryData = data.summary || self.summaryData;
+      })
+      .catch(function(error) {
+        console.error('Failed to fetch departments:', error);
+      });
+    },
+
+    fetchEmployees: function() {
+      var self = this;
+      var params = new URLSearchParams();
+      if (self.filters.l2Department) params.append('l2', self.filters.l2Department);
+      if (self.filters.l3Department) params.append('l3', self.filters.l3Department);
+      if (self.filters.employeeName) params.append('name', self.filters.employeeName);
+      if (self.filters.tripRatio) params.append('tripRatio', self.filters.tripRatio);
+      if (self.filters.startDate) params.append('startDate', self.filters.startDate);
+      if (self.filters.endDate) params.append('endDate', self.filters.endDate);
+      params.append('page', self.currentPage);
+      params.append('pageSize', self.pageSize);
+
+      fetch('/api/employees?' + params.toString(), {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        self.employeeData = data.items || [];
+        self.summaryData = data.summary || self.summaryData;
+      })
+      .catch(function(error) {
+        console.error('Failed to fetch employees:', error);
+      });
+    },
+
+    fetchDepartmentDetail: function(l2, l3) {
+      var self = this;
+      var params = new URLSearchParams();
+      params.append('l2', l2);
+      params.append('l3', l3);
+      if (self.filters.startDate) params.append('startDate', self.filters.startDate);
+      if (self.filters.endDate) params.append('endDate', self.filters.endDate);
+      params.append('page', self.popupPage);
+      params.append('pageSize', self.pageSize);
+
+      fetch('/api/department-detail?' + params.toString(), {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        self.popupData = data.items || [];
+      })
+      .catch(function(error) {
+        console.error('Failed to fetch department detail:', error);
+      });
+    },
+
+    fetchSummary: function() {
+      var self = this;
+      var params = new URLSearchParams();
+      if (self.filters.startDate) params.append('startDate', self.filters.startDate);
+      if (self.filters.endDate) params.append('endDate', self.filters.endDate);
+
+      fetch('/api/summary?' + params.toString(), {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(function(response) { return response.json(); })
+      .then(function(data) {
+        self.summaryData = data;
+      })
+      .catch(function(error) {
+        console.error('Failed to fetch summary:', error);
+      });
+    }
+    */
+  },
+
+  mounted: function() {
+    // --- API INTEGRATION (uncomment when backend is ready) ---
+    // this.fetchSummary();
+    // this.fetchDepartments();
+    // this.fetchEmployees();
+  }
+}
+</script>
+
+<style scoped>
+/* ====================================================
+   EXACT DESIGN MATCH - HR Work Trip Dashboard
+   ==================================================== */
+
+.hr-dashboard {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  background: #fff;
+  color: #333;
+  padding: 0;
+}
+
+/* ============ FILTER BAR ============ */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.8vw;
+  padding: 1.2vw 1.8vw;
+  background: #fff;
+  border-bottom: 1px solid #f0f0f0;
+}
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35vw;
+}
+.filter-label {
+  font-size: max(11px, 0.82vw);
+  color: #444;
+  white-space: nowrap;
+  font-weight: 400;
+}
+.filter-label-required::before {
+  content: '*';
+  color: #E8621A;
+  margin-right: 2px;
+  font-weight: 600;
+}
+.filter-select {
+  height: max(28px, 2vw);
+  padding: 0 1.8vw 0 0.6vw;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  font-size: max(11px, 0.8vw);
+  color: #aaa;
+  background: #fff;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath fill='%23999' d='M2 4l3 3 3-3z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  min-width: max(55px, 4.2vw);
+  cursor: pointer;
+}
+.filter-select-l3 {
+  min-width: max(65px, 5vw);
+}
+.filter-input {
+  height: max(28px, 2vw);
+  padding: 0 0.6vw;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  font-size: max(11px, 0.8vw);
+  color: #333;
+  background: #fff;
+}
+.filter-input-days {
+  width: max(60px, 4.5vw);
+}
+.filter-input-ratio {
+  width: max(75px, 5.5vw);
+  background: #FFF0E6;
+  border-color: #f0c8a8;
+}
+.filter-input-employee {
+  width: max(75px, 5.5vw);
+  background: #FFF0E6;
+  border-color: #f0c8a8;
+}
+.filter-input-date {
+  width: max(100px, 7.5vw);
+  color: #aaa;
+}
+.filter-select:focus,
+.filter-input:focus {
+  outline: none;
+  border-color: #E8621A;
+}
+.date-arrow {
+  font-size: max(8px, 0.6vw);
+  color: #E8621A;
+  margin: 0 0.15vw;
+}
+
+/* ============ ACTION BUTTONS ============ */
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1.2vw;
+  padding: 1.8vw 0 1.2vw;
+}
+.btn-search {
+  padding: 0.55vw 3.8vw;
+  background: #E8621A;
+  color: #fff;
+  border: none;
+  border-radius: 3px;
+  font-size: max(13px, 0.95vw);
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  transition: background 0.2s;
+}
+.btn-search:hover { background: #d4570f; }
+.btn-search:active { background: #b84a0d; }
+.btn-reset {
+  padding: 0.55vw 3.8vw;
+  background: #f5f5f5;
+  color: #555;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  font-size: max(13px, 0.95vw);
+  cursor: pointer;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+.btn-reset:hover { background: #eee; border-color: #bbb; }
+
+/* ============ SUMMARY CARDS ============ */
+.summary-cards {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 1.2vw;
+  padding: 0 1.8vw 0.8vw;
+}
+.card {
+  border: 1px solid #e0e0e0;
+  border-radius: 5px;
+  background: #fff;
+  padding: 1.4vw 1.6vw;
+  transition: box-shadow 0.2s;
+}
+.card:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.card-with-icon {
+  flex: 0 1 22%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.card-centered {
+  flex: 1 1 28%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3vw;
+}
+.card-content-center {
+  align-items: center;
+  text-align: center;
+}
+.card-label {
+  font-size: max(11px, 0.82vw);
+  color: #555;
+  font-weight: 400;
+}
+.card-label-orange {
+  color: #E8621A;
+  font-weight: 500;
+}
+.card-value {
+  font-size: max(22px, 2.2vw);
+  font-weight: 700;
+  color: #1a1a2e;
+  line-height: 1.15;
+}
+.card-value-large {
+  font-size: max(26px, 2.6vw);
+}
+.card-unit {
+  font-size: max(14px, 1.2vw);
+  font-weight: 400;
+  color: #666;
+}
+.card-icon {
+  width: max(38px, 3.5vw);
+  height: max(38px, 3.5vw);
+  flex-shrink: 0;
+  margin-left: 0.8vw;
+}
+.card-icon svg { width: 100%; height: 100%; }
+
+/* ============ TAB BUTTONS ============ */
+.tab-buttons {
+  display: flex;
+  gap: 0.8vw;
+  padding: 1vw 1.8vw 0.8vw;
+}
+.tab-btn {
+  padding: 0.4vw 1.8vw;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  background: #fff;
+  color: #888;
+  font-size: max(12px, 0.85vw);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-weight: 400;
+}
+.tab-btn.active {
+  color: #E8621A;
+  border-color: #E8621A;
+  font-weight: 500;
+  background: #fff;
+}
+.tab-btn:hover:not(.active) {
+  border-color: #aaa;
+  color: #555;
+}
+
+/* ============ DATA TABLE ============ */
+.table-container {
+  padding: 0 1.8vw;
+  overflow-x: auto;
+}
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid #e8e8e8;
+}
+.data-table thead {
+  background: #E6EAF2; /* Light blue header matching design */
+}
+.data-table thead th {
+  padding: max(9px, 0.75vw) max(12px, 1vw);
+  color: #333;
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+  font-size: max(12px, 0.85vw);
+  border-right: 1px solid #dcdcdc;
+  border-bottom: 1px solid #dcdcdc;
+}
+.data-table thead th:last-child {
+  border-right: none;
+}
+.data-table tbody tr {
+  border-bottom: 1px solid #f0f0f0;
+}
+.data-table tbody tr:hover {
+  background: #fafbfd;
+}
+.data-table tbody td {
+  padding: max(8px, 0.72vw) max(12px, 1vw);
+  font-size: max(12px, 0.85vw);
+  color: #333;
+  vertical-align: middle;
+  border-right: 1px solid #f0f0f0;
+}
+.data-table tbody td:last-child {
+  border-right: none;
+}
+.clickable-row { cursor: pointer; }
+.clickable-row:hover { background: #f4f6f9 !important; }
+
+.th-n, .td-n { width: 3%; text-align: center; color: #666; }
+.th-dept { width: 18%; }
+.th-name, .td-name { width: 18%; }
+.th-position, .td-position { width: 14%; }
+.th-num { text-align: center; width: 14%; }
+.td-num { text-align: center; }
+.td-ratio { color: #E8621A; font-weight: 500; }
+.td-link {
+  color: #4A7EC5;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.td-link:hover { color: #2d5a9e; }
+.td-empty {
+  text-align: center;
+  padding: 3vw !important;
+  color: #aaa;
+  font-size: max(13px, 0.9vw);
+}
+
+/* ============ PAGINATION ============ */
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5vw 1.8vw;
+}
+.page-info-container {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+}
+.page-info {
+  font-size: max(11px, 0.8vw);
+  color: #777;
+}
+.page-size-select {
+  padding: 0.2vw 0.5vw;
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  font-size: max(11px, 0.8vw);
+  color: #555;
+  cursor: pointer;
+  outline: none;
+}
+.page-size-select:focus {
+  border-color: #E8621A;
+}
+.page-controls {
+  display: flex;
+  gap: 0.6vw;
+}
+.page-btn {
+  padding: max(5px, 0.38vw) max(14px, 1.2vw);
+  border: 1px solid #d9d9d9;
+  border-radius: 3px;
+  background: #fff;
+  color: #444;
+  font-size: max(11px, 0.8vw);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.page-btn:hover:not(:disabled) { background: #fafafa; border-color: #bbb; }
+.page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.chevron { font-size: max(13px, 0.95vw); color: #aaa; line-height: 1; }
+
+/* ============ POPUP ============ */
+.popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: popFadeIn 0.2s ease;
+}
+@keyframes popFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.popup-box {
+  background: #fff;
+  border-radius: 12px;
+  width: max(600px, 68vw);
+  max-height: 82vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+  animation: popSlideUp 0.25s ease;
+}
+@keyframes popSlideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.popup-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  flex: 1;
+  padding: 0;
+}
+.popup-table {
+  border-radius: 0;
+}
+.popup-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.popup-pagination {
+  border-top: 1px solid #eee;
+  padding: max(10px, 0.8vw) max(16px, 1.4vw);
+  flex-shrink: 0;
+}
+
+/* ============ RESPONSIVE ============ */
+@media screen and (max-width: 768px) {
+  .filter-bar { flex-direction: column; align-items: stretch; gap: 8px; padding: 12px; }
+  .filter-group { width: 100%; }
+  .filter-label { font-size: 13px; min-width: 60px; }
+  .filter-select, .filter-input { flex: 1; font-size: 13px; height: 34px; min-width: auto !important; width: auto !important; }
+  .action-buttons { gap: 12px; padding: 16px 0; }
+  .btn-search, .btn-reset { font-size: 14px; padding: 8px 28px; }
+  .summary-cards { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  .card-with-icon, .card-centered { flex: 1 1 45%; min-width: 140px; padding: 12px; }
+  .card-value { font-size: 22px; }
+  .card-value-large { font-size: 24px; }
+  .card-icon { width: 36px; height: 36px; }
+  .tab-buttons { padding: 8px 12px; }
+  .tab-btn { font-size: 13px; padding: 6px 16px; }
+  .table-container { padding: 0 12px; }
+  .data-table thead th, .data-table tbody td { font-size: 12px; padding: 7px 8px; }
+  .pagination-bar { padding: 12px; }
+  .popup-box { width: 95vw; border-radius: 8px; }
+}
+
+/* ============ TEXT FORMATTING ============ */
+.hr-dashboard >>> .content-area,
+.hr-dashboard >>> .text-content {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+</style>
